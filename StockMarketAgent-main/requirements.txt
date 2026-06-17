@@ -1,0 +1,6 @@
+agno
+google-genai
+plotly
+python-dotenv
+streamlit
+yfinance
