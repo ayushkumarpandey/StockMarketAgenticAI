@@ -123,7 +123,8 @@ def get_investment_agents(model_instance):
         instructions=[
             "Retrieve and compare stock performance from Yahoo Finance.",
             "Calculate percentage change over a 6-month period.",
-            "Rank stocks based on their relative performance."
+            "Rank stocks based on their relative performance.",
+            "Do not output any programming code (such as Python or code blocks). Write in plain markdown text."
         ],
         markdown=True
     )
@@ -134,7 +135,8 @@ def get_investment_agents(model_instance):
         instructions=[
             "Retrieve company information from Yahoo Finance.",
             "Summarize latest company news relevant to investors.",
-            "Provide sector, market cap, and business overview."
+            "Provide sector, market cap, and business overview.",
+            "Do not output any programming code (such as Python or code blocks). Write in plain markdown text."
         ],
         markdown=True
     )
@@ -145,7 +147,8 @@ def get_investment_agents(model_instance):
         instructions=[
             "Analyze stock performance trends and company fundamentals.",
             "Evaluate risk-reward potential and industry trends.",
-            "Provide top stock recommendations for investors."
+            "Provide top stock recommendations for investors.",
+            "Do not output any programming code (such as Python or code blocks). Write in plain markdown text."
         ],
         markdown=True
     )
@@ -158,7 +161,8 @@ def get_investment_agents(model_instance):
             "Ensure all insights are structured in an investor-friendly report.",
             "Rank the top stocks based on combined analysis.",
             "Clearly specify which stock is the single best stock to buy.",
-            "Provide the absolute best time/entry strategy to buy that stock (e.g. key indicators to watch, buy on dips, etc.)."
+            "Provide the absolute best time/entry strategy to buy that stock (e.g. key indicators to watch, buy on dips, etc.).",
+            "Do not output any programming code (such as Python or code blocks). Write purely in formatted markdown."
         ],
         markdown=True
     )
@@ -227,8 +231,11 @@ def generate_optimized_investment_report(symbols, model_instance, budget, risk_t
     if not performance_data:
         return "No valid stock data found for the given symbols.", {}, {}
     
+    # Format performance metrics into a clean plain text summary
+    performance_text = "\n".join([f"- {sym}: {pct:.2%}" for sym, pct in performance_data.items()])
+    
     # 2. Get market analysis (1 call)
-    market_analysis_res = market_analyst.run(f"Compare these stock performances: {performance_data}")
+    market_analysis_res = market_analyst.run(f"Compare these stock performances:\n{performance_text}")
     market_analysis = market_analysis_res.content
     
     # 3. Get company analysis and news sentiment for each symbol
@@ -244,20 +251,31 @@ def generate_optimized_investment_report(symbols, model_instance, budget, risk_t
         score, sentiment, summary = analyze_news_sentiment(symbol, news, model_instance)
         sentiment_data[symbol] = {"score": score, "sentiment": sentiment, "summary": summary}
         
+        # Format news articles into a clean plain text block
+        news_text = ""
+        for idx, item in enumerate(news):
+            news_text += f"{idx+1}. {item.get('title', 'No Title')} (Publisher: {item.get('publisher', 'N/A')})\n"
+            
         # Call company researcher agent (1 call per symbol)
         response = company_researcher.run(
             f"Provide an analysis for {info['name']} in the {info['sector']} sector.\n"
             f"Market Cap: {info['market_cap']}\n"
             f"Summary: {info['summary']}\n"
             f"News Sentiment: {sentiment} ({score:+} Score) - Reason: {summary}\n"
-            f"Latest News Articles: {news}"
+            f"Latest News Articles:\n{news_text}"
         )
         company_analyses_dict[symbol] = response.content
         company_analyses_list.append(response.content)
         
+    # Format company analysis into a clean text block
+    company_analyses_formatted = ""
+    for sym, analysis in company_analyses_dict.items():
+        company_analyses_formatted += f"### {sym} Research and News Analysis:\n{analysis}\n\n"
+        
     # 4. Get stock recommendations and portfolio allocations (1 call)
     recommendations_res = stock_strategist.run(
-        f"Based on the market analysis: {market_analysis}, and company research {company_analyses_dict}\n"
+        f"Based on the market analysis:\n{market_analysis}\n\n"
+        f"and company research:\n{company_analyses_formatted}\n\n"
         f"How would you allocate a budget of ${budget} across these stocks: {symbols} for a {risk_tolerance} risk appetite?\n"
         f"Provide detailed allocation reasoning, and at the very end write a single line summarizing the allocation in this exact format:\n"
         f"ALLOCATION: Symbol1:Pct1%, Symbol2:Pct2%...\n"
@@ -265,8 +283,10 @@ def generate_optimized_investment_report(symbols, model_instance, budget, risk_t
     )
     stock_recommendations = recommendations_res.content
     
-    # Extract the ALLOCATION line if possible
+    # Extract the ALLOCATION line if possible, and remove it from display text
     allocations = {sym: round(100 / len(symbols), 2) for sym in symbols}
+    clean_stock_recommendations_lines = []
+    
     for line in stock_recommendations.split("\n"):
         if "ALLOCATION:" in line:
             try:
@@ -282,12 +302,19 @@ def generate_optimized_investment_report(symbols, model_instance, budget, risk_t
                     allocations = parsed_alloc
             except Exception:
                 pass
+        else:
+            clean_stock_recommendations_lines.append(line)
+            
+    clean_stock_recommendations = "\n".join(clean_stock_recommendations_lines).strip()
+    
+    # Format company analyses list as a clean readable text block
+    company_analyses_list_text = "\n\n".join(company_analyses_list)
     
     # 5. Get final report (1 call)
     final_report_res = team_lead.run(
         f"Market Analysis:\n{market_analysis}\n\n"
-        f"Company Analyses & Sentiments:\n{company_analyses_list}\n\n"
-        f"Stock Recommendations & Recommended Allocation:\n{stock_recommendations}\n\n"
+        f"Company Analyses & Sentiments:\n{company_analyses_list_text}\n\n"
+        f"Stock Recommendations & Recommended Allocation:\n{clean_stock_recommendations}\n\n"
         f"Provide the full analysis of each stock with Fundamentals and market news.\n"
         f"At the very beginning of the report, add a clear, prominent section titled:\n"
         f"'## 🎯 AI Buy Decision & Entry Strategy'\n"
